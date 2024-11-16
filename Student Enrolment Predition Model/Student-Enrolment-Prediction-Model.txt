@@ -1,0 +1,104 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.model_selection import GridSearchCV
+import numpy as np
+
+kiprutoh = pd.read_csv('student.csv')
+print(kiprutoh.head())
+print(kiprutoh.info())
+
+plt.figure(figsize=(8, 4))
+sns.countplot(x='enrollment_status', data=kiprutoh)
+plt.title('Enrollment Status Distribution')
+plt.show()
+
+plt.figure(figsize=(8, 4))
+sns.countplot(x='financial_aid_status', data=kiprutoh)
+plt.title('Financial Aid Status Distribution')
+plt.show()
+
+numerical_data = kiprutoh.select_dtypes(include=['int64', 'float64'])
+
+plt.figure(figsize=(10, 6))
+sns.heatmap(numerical_data.corr(), annot=True, cmap='coolwarm')
+plt.title('Feature Correlation Matrix')
+plt.show()
+
+numeric_data = kiprutoh.select_dtypes(include=np.number)
+kiprutoh[numeric_data.columns] = numeric_data.fillna(numeric_data.median())
+data = kiprutoh.dropna()
+categorical_columns = data.select_dtypes(include=['object']).columns
+label_encoders = {}
+for col in categorical_columns:
+    le = LabelEncoder()
+    data[col] = le.fit_transform(data[col])
+    label_encoders[col] = le
+
+X = data.drop(['enrollment_status', 'financial_aid_status'], axis=1)  # Adjust column names accordingly
+y_enroll = data['enrollment_status']
+y_support = data['financial_aid_status']
+
+X_train, X_test, y_enroll_train, y_enroll_test = train_test_split(X, y_enroll, test_size=0.2, random_state=42)
+_, _, y_support_train, y_support_test = train_test_split(X, y_support, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+enroll_model = RandomForestClassifier(random_state=42)
+enroll_model.fit(X_train, y_enroll_train)
+
+y_enroll_pred = enroll_model.predict(X_test)
+
+print("Enrollment Prediction Evaluation")
+print(classification_report(y_enroll_test, y_enroll_pred))
+print(confusion_matrix(y_enroll_test, y_enroll_pred))
+print("Accuracy:", accuracy_score(y_enroll_test, y_enroll_pred))
+
+support_model = RandomForestClassifier(random_state=42)
+support_model.fit(X_train, y_support_train)
+y_support_pred = support_model.predict(X_test)
+
+print("\nSupport Needs Prediction Evaluation")
+print(classification_report(y_support_test, y_support_pred))
+print(confusion_matrix(y_support_test, y_support_pred))
+print("Accuracy:", accuracy_score(y_support_test, y_support_pred))
+
+
+param_grid = {
+    'n_estimators': [150, 220, 340],
+    'max_depth': [None, 15, 25],
+}
+
+grid_search = GridSearchCV(estimator=enroll_model, param_grid=param_grid, cv=10)
+grid_search.fit(X_train, y_enroll_train)
+best_model = grid_search.best_estimator_
+joblib.dump(best_model, 'student.pkl')
+
+print("Best model saved as 'student'.")
+loaded_model = joblib.load('student.pkl')
+
+sample_data = pd.DataFrame(X_test).iloc[0:1, :]
+prediction = loaded_model.predict(sample_data)
+
+def plot_feature_importance(model, X):
+    feature_names = X.columns
+    importance = model.feature_importances_
+    indices = np.argsort(importance)[::-1]
+
+    plt.figure(figsize=(10, 6))
+    plt.title("Feature Importance")
+    plt.bar(range(len(importance)), importance[indices], align='center')
+    plt.xticks(range(len(importance)), feature_names[indices], rotation=75)
+    plt.tight_layout()
+    plt.show()
+plot_feature_importance(loaded_model, X)
+sample_data = pd.DataFrame(X_test).iloc[0:1, :]
+prediction = loaded_model.predict(sample_data)
+print(f'Predicted enrollment status: {prediction}')
